@@ -1,0 +1,407 @@
+======================================================================
+           KUBERNETES KUBEADM SETUP ON AWS EC2 (3 NODE CLUSTER)
+======================================================================
+
+Cluster Architecture
+
+                AWS VPC
+                   |
+        ------------------------
+        |                      |
+     Public Subnet
+        |
+-----------------------------------------------------
+|                    |                    |
+| Control Plane      | Worker Node 1      | Worker Node 2
+| k8s-master         | worker1            | worker2
+| t3.medium          | t3.medium          | t3.medium
+| 30 GB gp3          | 30 GB gp3          | 30 GB gp3
+-----------------------------------------------------
+
+======================================================================
+STEP 1 : CREATE SECURITY GROUP
+======================================================================
+
+Security Group Name:
+kubernetes-cluster
+
+Inbound Rules
+
+1. SSH
+Port : 22
+Source : My IP
+
+2. All Traffic
+Protocol : All
+Port : All
+Source : Self (Same Security Group)
+
+(Optional)
+
+HTTP
+Port : 80
+Source : Anywhere
+
+HTTPS
+Port : 443
+Source : Anywhere
+
+NodePort
+Port : 30000-32767
+Source : Anywhere
+
+Outbound Rules
+
+All Traffic
+Destination : 0.0.0.0/0
+
+======================================================================
+STEP 2 : CREATE EC2 INSTANCES
+======================================================================
+
+AMI
+Ubuntu Server 24.04 LTS (Recommended)
+
+Instance Type
+t3.medium
+
+Storage
+30 GB gp3
+
+Number of Instances
+3
+
+Names
+
+k8s-master
+worker1
+worker2
+
+Attach
+
+Same Security Group
+Same VPC
+Same Subnet
+
+======================================================================
+STEP 3 : CONNECT TO INSTANCES
+======================================================================
+
+ssh -i mykey.pem ubuntu@<Public-IP>
+
+======================================================================
+STEP 4 : SET HOSTNAMES
+======================================================================
+
+MASTER
+
+sudo hostnamectl set-hostname k8s-master
+
+WORKER-1
+
+sudo hostnamectl set-hostname worker1
+
+WORKER-2
+
+sudo hostnamectl set-hostname worker2
+
+Reconnect SSH after changing hostname.
+
+======================================================================
+STEP 5 : UPDATE /etc/hosts
+(RUN ON ALL THREE NODES)
+======================================================================
+
+Find each instance's PRIVATE IP.
+
+Example
+
+172.31.45.28 k8s-master
+172.31.12.195 worker1
+172.31.15.30 worker2
+
+Edit
+
+sudo nano /etc/hosts
+
+Add
+
+172.31.45.28 k8s-master
+172.31.12.195 worker1
+172.31.15.30 worker2
+
+======================================================================
+STEP 6 : DISABLE SWAP
+(RUN ON ALL NODES)
+======================================================================
+
+sudo swapoff -a
+
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
+
+Verify
+
+free -h
+
+Swap should be
+
+0B
+
+======================================================================
+STEP 7 : ENABLE KERNEL MODULES
+(RUN ON ALL NODES)
+======================================================================
+
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+
+sudo modprobe br_netfilter
+
+Verify
+
+lsmod | grep br_netfilter
+
+======================================================================
+STEP 8 : CONFIGURE SYSCTL
+(RUN ON ALL NODES)
+======================================================================
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables=1
+net.bridge.bridge-nf-call-ip6tables=1
+net.ipv4.ip_forward=1
+EOF
+
+sudo sysctl --system
+
+Verify
+
+sysctl net.ipv4.ip_forward
+
+Should return
+
+net.ipv4.ip_forward = 1
+
+======================================================================
+STEP 9 : INSTALL CONTAINERD
+(RUN ON ALL NODES)
+======================================================================
+
+sudo apt update
+
+sudo apt install -y containerd
+
+sudo mkdir -p /etc/containerd
+
+containerd config default | sudo tee /etc/containerd/config.toml
+
+Change
+
+SystemdCgroup = false
+
+to
+
+SystemdCgroup = true
+
+OR
+
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' \
+/etc/containerd/config.toml
+
+Restart
+
+sudo systemctl restart containerd
+
+sudo systemctl enable containerd
+
+Verify
+
+sudo systemctl status containerd
+
+======================================================================
+STEP 10 : INSTALL KUBERNETES PACKAGES
+(RUN ON ALL NODES)
+======================================================================
+
+sudo apt update
+
+sudo apt install -y \
+apt-transport-https \
+ca-certificates \
+curl \
+gpg \
+conntrack \
+socat \
+ebtables \
+ethtool \
+iptables \
+iproute2
+
+Create keyring
+
+sudo mkdir -p /etc/apt/keyrings
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key \
+| sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' \
+| sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt update
+
+sudo apt install -y kubelet kubeadm kubectl
+
+sudo apt-mark hold kubelet kubeadm kubectl
+
+Verify
+
+kubeadm version
+
+======================================================================
+STEP 11 : INITIALIZE CONTROL PLANE
+(RUN ONLY ON MASTER)
+======================================================================
+
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+
+Wait for completion.
+
+======================================================================
+STEP 12 : CONFIGURE kubectl
+(MASTER ONLY)
+======================================================================
+
+mkdir -p $HOME/.kube
+
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
+
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Verify
+
+kubectl get nodes
+
+Expected
+
+NotReady
+
+This is normal.
+
+======================================================================
+STEP 13 : INSTALL CALICO NETWORK
+(MASTER ONLY)
+======================================================================
+
+kubectl apply -f \
+https://raw.githubusercontent.com/projectcalico/calico/v3.29.0/manifests/calico.yaml
+
+Wait
+
+2-3 minutes
+
+Verify
+
+kubectl get pods -A
+
+======================================================================
+STEP 14 : GENERATE JOIN COMMAND
+(MASTER ONLY)
+======================================================================
+
+kubeadm token create --print-join-command
+
+Example
+
+sudo kubeadm join 172.31.45.28:6443 \
+--token <TOKEN> \
+--discovery-token-ca-cert-hash sha256:<HASH>
+
+Copy this command.
+
+======================================================================
+STEP 15 : JOIN WORKERS
+(RUN ONLY ON WORKER1 & WORKER2)
+======================================================================
+
+sudo kubeadm join 172.31.45.28:6443 \
+--token <TOKEN> \
+--discovery-token-ca-cert-hash sha256:<HASH>
+
+======================================================================
+STEP 16 : VERIFY CLUSTER
+(MASTER ONLY)
+======================================================================
+
+kubectl get nodes
+
+Expected
+
+NAME          STATUS   ROLES
+k8s-master    Ready    control-plane
+worker1       Ready    <none>
+worker2       Ready    <none>
+
+======================================================================
+STEP 17 : TEST CLUSTER
+(MASTER ONLY)
+======================================================================
+
+Create Deployment
+
+kubectl create deployment nginx --image=nginx
+
+Scale
+
+kubectl scale deployment nginx --replicas=3
+
+Verify
+
+kubectl get pods -o wide
+
+Check nodes
+
+kubectl get nodes
+
+Check deployments
+
+kubectl get deployment
+
+======================================================================
+USEFUL COMMANDS
+======================================================================
+
+kubectl get nodes
+
+kubectl get pods -A
+
+kubectl get svc
+
+kubectl get deployment
+
+kubectl get events
+
+kubectl describe node worker1
+
+kubectl logs <pod-name>
+
+======================================================================
+RESET WORKER NODE
+======================================================================
+
+sudo kubeadm reset -f
+
+sudo systemctl restart containerd
+
+======================================================================
+GENERATE NEW JOIN COMMAND
+======================================================================
+
+kubeadm token create --print-join-command
+
+======================================================================
+CLUSTER IS READY
+======================================================================
