@@ -1,0 +1,56 @@
+Installation Order
+
+We'll install tools in the order they are used by the pipeline.
+
+Step 1 — Java
+
+Jenkins and Maven require Java.
+
+sudo apt update
+
+sudo apt install openjdk-21-jdk -y
+
+Verify
+
+java -version
+Step 2 — Git
+sudo apt install git -y
+
+Verify
+
+git --version
+Step 3 — Maven
+sudo apt install maven -y
+
+Verify
+
+mvn -version
+Step 4 — Docker
+
+Install Docker.
+
+Verify
+
+docker --version
+
+Add ubuntu user to docker group
+
+sudo usermod -aG docker ubuntu
+Step 5 — Jenkins
+
+Install Jenkins.
+
+Verify
+
+systemctl status jenkins
+
+Open
+
+http://<EC2-Public-IP>:8080
+Step 6 — Trivy
+
+Install Trivy.
+
+Verify
+
+trivy --version
