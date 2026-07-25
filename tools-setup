@@ -118,3 +118,61 @@ Now Maven will be installed in:
 
 /opt/maven
 
+Step 3: Configure Environment Variables
+
+Create a profile file:
+
+sudo nano /etc/profile.d/maven.sh
+
+Paste the following:
+
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+export M2_HOME=/opt/maven
+export MAVEN_HOME=/opt/maven
+export PATH=$PATH:$M2_HOME/bin
+
+Save:
+
+Step 4: Load the Environment Variables
+source /etc/profile.d/maven.sh
+
+Also add it to your shell so it's available after login:
+
+echo "source /etc/profile.d/maven.sh" >> ~/.bashrc
+source ~/.bashrc
+Step 5: Verify the Installation
+mvn -version
+
+You should get output similar to:
+
+Apache Maven 3.9.16
+Maven home: /opt/maven
+Java version: 21.0.11
+Java home: /usr/lib/jvm/...
+OS: Linux
+Step 6: Verify Environment Variables
+echo $JAVA_HOME
+echo $M2_HOME
+which mvn
+
+Expected:
+
+/opt/maven/bin/mvn
+Since you're using Jenkins, do one more thing
+
+Make Maven available to the Jenkins service.
+
+Edit the Jenkins environment file:
+
+sudo nano /etc/default/jenkins
+
+If the file exists, add:
+
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+M2_HOME=/opt/maven
+MAVEN_HOME=/opt/maven
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maven/bin
+
+Then restart Jenkins:
+
+sudo systemctl restart jenkins
