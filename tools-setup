@@ -94,7 +94,27 @@ echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.
 Step 4: Install Trivy
 sudo apt-get update
 sudo apt-get install trivy -y
-
 Verify
 
 trivy --version
+=================================================================================
+Installing Maven
+cd opt/
+sudo wget https://dlcdn.apache.org/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz
+
+sudo tar -xzf apache-maven-3.9.16-bin.tar.gz
+
+Verify:
+
+ls -l /opt
+
+You should see:
+
+apache-maven-3.9.16
+Step 2: Rename the Directory
+sudo mv apache-maven-3.9.16 maven
+
+Now Maven will be installed in:
+
+/opt/maven
+
