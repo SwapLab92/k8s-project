@@ -176,3 +176,35 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maven/bin
 Then restart Jenkins:
 
 sudo systemctl restart jenkins
+
+Create the kubeconfig for Jenkins
+
+Run these commands exactly:
+
+sudo mkdir -p /var/lib/jenkins/.kube
+
+sudo cp /etc/kubernetes/admin.conf /var/lib/jenkins/.kube/config
+
+sudo chown -R jenkins:jenkins /var/lib/jenkins/.kube
+
+sudo chmod 600 /var/lib/jenkins/.kube/config
+
+Verify the file exists:
+
+sudo ls -l /var/lib/jenkins/.kube
+
+Expected:
+
+config
+Fix 2: Test as the Jenkins user
+
+Run:
+
+sudo -u jenkins kubectl get nodes
+
+You should get something like:
+
+NAME         STATUS   ROLES
+k8s-master   Ready    control-plane
+worker1      Ready
+worker2      Ready
