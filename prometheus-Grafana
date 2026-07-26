@@ -259,3 +259,78 @@ sudo ss -tulnp | grep 9100
 Expected:
 
 LISTEN 0 4096 *:9100
+
+=========================================================
+Step 1: Edit the correct file
+sudo nano /opt/prometheus/prometheus.yml
+
+You should see something similar to:
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+Step 2: Add Node Exporter targets
+
+Append this below the existing prometheus job.
+
+Replace the IPs with your private IPs.
+
+  - job_name: "node_exporters"
+    static_configs:
+      - targets:
+          - "172.31.xx.xx:9100"    # k8s-master
+          - "172.31.xx.xx:9100"    # worker1
+          - "172.31.xx.xx:9100"    # worker2
+
+Example:
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets:
+          - "localhost:9090"
+
+  - job_name: "node_exporters"
+    static_configs:
+      - targets:
+          - "172.31.45.28:9100"
+          - "172.31.40.115:9100"
+          - "172.31.33.181:9100"
+Step 3: Verify configuration
+
+Before restarting, always check the syntax.
+
+/opt/prometheus/promtool check config /opt/prometheus/prometheus.yml
+
+You should get:
+
+SUCCESS: 0 rule files found
+Step 4: Restart Prometheus
+sudo systemctl restart prometheus
+
+Verify:
+
+sudo systemctl status prometheus
+
+It should remain Active (running).
+
+Step 5: Verify Targets
+
+Open:
+
+http://<worker2-public-ip>:9090/targets
+
+You should now see:
+
+prometheus         UP
+node_exporters     UP
+
+Under node_exporters, all three nodes should show UP.
