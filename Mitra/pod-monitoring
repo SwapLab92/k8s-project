@@ -1,0 +1,542 @@
+# Kubernetes Pod Monitoring using Prometheus + Grafana + Kube-State-Metrics
+
+## Objective
+
+Monitor Kubernetes resources (Pods, Deployments, Nodes, Namespaces, ReplicaSets, etc.) in Grafana using Prometheus and Kube-State-Metrics.
+
+---
+
+# Existing Setup
+
+Already Installed:
+
+- Kubernetes Cluster (1 Master + 2 Workers)
+- Prometheus (Installed on Worker2)
+- Grafana (Installed on Worker2)
+- Node Exporter (Installed on all nodes)
+
+Current Monitoring:
+
+✔ CPU
+✔ Memory
+✔ Disk
+✔ Network
+
+using Node Exporter.
+
+---
+
+# Why Kube-State-Metrics?
+
+Node Exporter only monitors Linux machine metrics.
+
+It DOES NOT expose Kubernetes object metrics like:
+
+- Pods
+- Deployments
+- ReplicaSets
+- StatefulSets
+- DaemonSets
+- Namespaces
+- Jobs
+- CronJobs
+
+For Kubernetes object monitoring we use:
+
+Kube-State-Metrics
+
+---
+
+# Architecture
+
+                     +----------------------+
+                     |      Grafana         |
+                     +----------+-----------+
+                                |
+                                |
+                     Queries Prometheus
+                                |
+                                |
+                     +----------v-----------+
+                     |     Prometheus       |
+                     +----------+-----------+
+                                |
+              ------------------+------------------
+              |                 |                 |
+              |                 |                 |
+      Node Exporter      Node Exporter     kube-state-metrics
+         (All Nodes)        (All Nodes)      (Master Node)
+              |
+              |
+      Kubernetes Cluster
+
+---
+
+# Step 1
+
+Create Monitoring Namespace
+
+```bash
+kubectl create namespace monitoring
+```
+
+---
+
+# Step 2
+
+Create Service Account
+
+serviceaccount.yaml
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+```
+
+Apply
+
+```bash
+kubectl apply -f serviceaccount.yaml
+```
+
+---
+
+# Step 3
+
+Create ClusterRole
+
+clusterrole.yaml
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-state-metrics
+
+rules:
+- apiGroups: [""]
+  resources:
+    - pods
+    - nodes
+    - namespaces
+    - services
+    - endpoints
+    - persistentvolumeclaims
+    - persistentvolumes
+  verbs: ["list","watch"]
+
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - daemonsets
+    - replicasets
+    - statefulsets
+  verbs: ["list","watch"]
+
+- apiGroups: ["batch"]
+  resources:
+    - jobs
+    - cronjobs
+  verbs: ["list","watch"]
+```
+
+Apply
+
+```bash
+kubectl apply -f clusterrole.yaml
+```
+
+---
+
+# Step 4
+
+Create ClusterRoleBinding
+
+clusterrolebinding.yaml
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-state-metrics
+
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: monitoring
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+```
+
+Apply
+
+```bash
+kubectl apply -f clusterrolebinding.yaml
+```
+
+---
+
+# Step 5
+
+Deployment
+
+deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+
+    spec:
+      serviceAccountName: kube-state-metrics
+
+      containers:
+
+      - name: kube-state-metrics
+
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
+
+        ports:
+        - containerPort: 8080
+```
+
+Apply
+
+```bash
+kubectl apply -f deployment.yaml
+```
+
+---
+
+# Step 6
+
+Expose Service
+
+service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+
+spec:
+  selector:
+    app: kube-state-metrics
+
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30081
+
+  type: NodePort
+```
+
+Apply
+
+```bash
+kubectl apply -f service.yaml
+```
+
+---
+
+# Step 7
+
+Verify
+
+```bash
+kubectl get pods -n monitoring
+```
+
+Expected
+
+```
+Running
+```
+
+Check Service
+
+```bash
+kubectl get svc -n monitoring
+```
+
+Check Endpoint
+
+```bash
+kubectl get endpoints -n monitoring
+```
+
+---
+
+# Step 8
+
+Verify Metrics
+
+From any node
+
+```bash
+curl http://<MASTER-IP>:30081/metrics
+```
+
+Expected Output
+
+```
+kube_pod_info
+
+kube_node_info
+
+kube_deployment_status_replicas
+
+...
+```
+
+---
+
+# Step 9
+
+Configure Prometheus
+
+Edit
+
+```bash
+sudo nano /opt/prometheus/prometheus.yml
+```
+
+Add
+
+```yaml
+- job_name: "kube-state-metrics"
+
+  static_configs:
+    - targets:
+        - "172.31.45.28:30081"
+```
+
+Restart
+
+```bash
+sudo systemctl restart prometheus
+```
+
+---
+
+# Step 10
+
+Verify Target
+
+Open
+
+```
+http://<Worker2-IP>:9090/targets
+```
+
+Expected
+
+```
+kube-state-metrics
+
+UP
+```
+
+---
+
+# Step 11
+
+Verify Metrics in Prometheus
+
+Run Queries
+
+```
+kube_pod_info
+```
+
+```
+kube_node_info
+```
+
+```
+kube_deployment_status_replicas
+```
+
+```
+kube_pod_status_phase
+```
+
+If data appears, Prometheus is scraping successfully.
+
+---
+
+# Step 12
+
+Configure Grafana
+
+Open
+
+```
+http://<Worker2-IP>:3000
+```
+
+Datasource
+
+```
+Prometheus
+```
+
+should already be configured.
+
+---
+
+# Step 13
+
+Import Dashboard
+
+Dashboard
+
+```
+Dashboards
+↓
+
+Import
+```
+
+Recommended Dashboard IDs
+
+```
+6417
+```
+
+or
+
+```
+15757
+```
+
+Datasource
+
+```
+Prometheus
+```
+
+Click
+
+```
+Import
+```
+
+---
+
+# Verify
+
+You should now be able to monitor
+
+✔ Cluster
+
+✔ Nodes
+
+✔ Pods
+
+✔ Deployments
+
+✔ ReplicaSets
+
+✔ StatefulSets
+
+✔ DaemonSets
+
+✔ Namespaces
+
+✔ Jobs
+
+✔ CronJobs
+
+inside Grafana.
+
+---
+
+# Existing Monitoring
+
+Node Exporter provides
+
+✔ CPU
+
+✔ Memory
+
+✔ Disk
+
+✔ Network
+
+✔ Filesystem
+
+---
+
+# Kube-State-Metrics provides
+
+✔ Pod Status
+
+✔ Pod Count
+
+✔ Deployment Status
+
+✔ Replica Count
+
+✔ Node Status
+
+✔ Namespace Metrics
+
+✔ DaemonSet Metrics
+
+✔ StatefulSet Metrics
+
+✔ Job Metrics
+
+✔ CronJob Metrics
+
+---
+
+# Final Architecture
+
+Grafana
+
+↓
+
+Prometheus
+
+↓
+
++-------------------------+
+| Node Exporters          |
+| (Linux Metrics)         |
++-------------------------+
+
++
+
++-------------------------+
+| Kube-State-Metrics      |
+| (Kubernetes Metrics)    |
++-------------------------+
+
+↓
+
+Kubernetes Cluster
