@@ -1,0 +1,153 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB_USER = "swaphub92"
+        IMAGE_NAME = "netflix-app"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/SwapLab92/my-project.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+    environment {
+        SCANNER_HOME = tool 'SonarScanner'
+    }
+
+    steps {
+        withSonarQubeEnv('SonarQube') {
+
+            sh '''
+            cd devops-webapp
+
+            $SCANNER_HOME/bin/sonar-scanner \
+            -Dsonar.projectKey=netflix-app \
+            -Dsonar.projectName=Netflix-App \
+            -Dsonar.sources=. \
+            -Dsonar.java.binaries=. \
+            '''
+        }
+    }
+}
+        stage('Trivy Filesystem Scan') {
+            steps {
+                sh '''
+                    cd devops-webapp
+                    trivy fs . || true
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    cd devops-webapp
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Verify Image') {
+            steps {
+                sh '''
+                    docker images | grep ${IMAGE_NAME}
+                '''
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                sh '''
+                    trivy image ${IMAGE_NAME}:${IMAGE_TAG} || true
+                '''
+            }
+        }
+
+        stage('Docker Hub Login') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Tag Image') {
+            steps {
+                sh '''
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                    ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} \
+                    ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Push Image') {
+            steps {
+                sh '''
+                    docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${DOCKER_HUB_USER}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh '''
+                    kubectl apply -f namespace.yaml
+                    kubectl apply -f deployment.yaml
+                    kubectl apply -f service.yaml
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    echo "===== Nodes ====="
+                    kubectl get nodes
+
+                    echo "===== Pods ====="
+                    kubectl get pods -A
+
+                    echo "===== Deployments ====="
+                    kubectl get deployments -A
+
+                    echo "===== Services ====="
+                    kubectl get svc -A
+                '''
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo 'CI/CD Pipeline Completed Successfully'
+        }
+
+        failure {
+            echo 'Pipeline Failed'
+        }
+
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}
