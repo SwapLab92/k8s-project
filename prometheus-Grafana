@@ -95,3 +95,87 @@ Open:
 http://<WORKER2_PUBLIC_IP>:9090
 
 You should see the Prometheus UI.
+=============================================================================================
+
+Step 1: Install Prerequisites
+sudo apt update
+sudo apt install -y software-properties-common apt-transport-https wget
+Step 2: Add Grafana GPG Key
+sudo mkdir -p /etc/apt/keyrings
+
+wget -q -O - https://apt.grafana.com/gpg.key | \
+gpg --dearmor | \
+sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+Step 3: Add Grafana Repository
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | \
+sudo tee /etc/apt/sources.list.d/grafana.list
+Step 4: Install Grafana
+sudo apt update
+sudo apt install grafana -y
+Step 5: Enable and Start Grafana
+sudo systemctl daemon-reload
+
+sudo systemctl enable grafana-server
+
+sudo systemctl start grafana-server
+Step 6: Verify
+sudo systemctl status grafana-server
+
+Expected:
+
+Active: active (running)
+Step 7: Open Security Group
+
+Add another inbound rule to the Worker-2 Security Group.
+
+Type	Port	Source
+Custom TCP	3000	0.0.0.0/0
+Step 8: Open Grafana
+
+Open in your browser:
+
+http://<WORKER2_PUBLIC_IP>:3000
+
+Example:
+
+http://65.xx.xx.xx:3000
+Step 9: Login
+
+Default credentials
+
+Username : admin
+Password : admin
+
+Grafana will immediately ask you to change the password.
+
+Choose something simple for your lab, for example:
+
+Username : admin
+Password : Admin@123
+Step 10: Add Prometheus as Data Source
+
+After logging in:
+
+Connections
+      ↓
+Data Sources
+      ↓
+Add Data Source
+      ↓
+Prometheus
+
+For the URL, since Prometheus is on the same machine as Grafana, use:
+
+http://localhost:9090
+
+or
+
+http://127.0.0.1:9090
+
+Then click:
+
+Save & Test
+
+You should see:
+
+✅ Successfully queried the Prometheus API.
