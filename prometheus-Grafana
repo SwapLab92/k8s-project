@@ -334,3 +334,73 @@ prometheus         UP
 node_exporters     UP
 
 Under node_exporters, all three nodes should show UP.
+
+========================================================================================
+
+Step 1: Verify all targets are UP
+
+Open:
+
+http://<worker2-public-ip>:9090/targets
+
+You should now see:
+
+prometheus          UP
+node_exporters      UP
+node_exporters      UP
+node_exporters      UP
+Step 2: Connect Grafana to Prometheus
+
+Open Grafana:
+
+http://<worker2-public-ip>:3000
+
+Login:
+
+Username: admin
+Password: admin
+
+(Or the password you configured.)
+
+Add Prometheus Data Source
+
+Go to:
+
+Connections
+      ↓
+Data Sources
+      ↓
+Add Data Source
+      ↓
+Prometheus
+
+URL:
+
+http://localhost:9090
+
+Click:
+
+Save & Test
+
+You should see:
+
+Data source is working
+Step 3: Import Node Exporter Dashboard
+
+This is the dashboard used by thousands of organizations.
+
+Go to:
+
+Dashboards
+     ↓
+Import
+
+Dashboard ID:
+
+1860
+
+Click:
+
+Load
+
+Select your Prometheus data source and click Import.
