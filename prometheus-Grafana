@@ -1,0 +1,97 @@
+STEP 1 - Install Prometheus
+Update packages
+sudo apt update
+sudo apt install wget tar curl -y
+Download Prometheus
+
+First let's create a directory.
+
+cd /opt
+
+Download the latest stable release (replace the version if a newer one exists):
+
+sudo wget https://github.com/prometheus/prometheus/releases/download/v3.6.0/prometheus-3.6.0.linux-amd64.tar.gz
+
+If GitHub returns a 404, don't guess another version. Run:
+
+wget -qO- https://api.github.com/repos/prometheus/prometheus/releases/latest | grep tag_name
+
+and tell me the output. We'll use the exact latest version.
+
+Extract
+sudo tar -xzf prometheus-3.6.0.linux-amd64.tar.gz
+
+Rename it
+
+sudo mv prometheus-3.6.0.linux-amd64 prometheus
+
+Verify
+
+ls /opt/prometheus
+
+Expected output:
+
+console_libraries
+consoles
+LICENSE
+NOTICE
+prometheus
+prometheus.yml
+promtool
+Create Prometheus User
+sudo useradd --no-create-home --shell /bin/false prometheus
+Give Permissions
+sudo chown -R prometheus:prometheus /opt/prometheus
+Create Data Directory
+sudo mkdir /opt/prometheus/data
+sudo chown prometheus:prometheus /opt/prometheus/data
+Create Service
+sudo nano /etc/systemd/system/prometheus.service
+
+Paste:
+
+[Unit]
+Description=Prometheus Monitoring
+After=network.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+
+ExecStart=/opt/prometheus/prometheus \
+--config.file=/opt/prometheus/prometheus.yml \
+--storage.tsdb.path=/opt/prometheus/data
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+Save (Ctrl+O, Enter) and exit (Ctrl+X).
+
+Start Prometheus
+sudo systemctl daemon-reload
+sudo systemctl enable prometheus
+sudo systemctl start prometheus
+
+Verify:
+
+sudo systemctl status prometheus
+
+You should see:
+
+Active: active (running)
+Open Security Group
+
+On the Worker-2 EC2 Security Group, add an inbound rule:
+
+Type	Port	Source
+Custom TCP	9090	0.0.0.0/0
+Test
+
+Open:
+
+http://<WORKER2_PUBLIC_IP>:9090
+
+You should see the Prometheus UI.
