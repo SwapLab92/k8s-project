@@ -179,3 +179,83 @@ Save & Test
 You should see:
 
 ✅ Successfully queried the Prometheus API.
+
+
+=============================================================================
+
+ Download Node Exporter
+
+Run these commands on every node.
+
+cd /opt
+
+sudo wget https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz
+
+Extract:
+
+sudo tar -xzf node_exporter-1.8.2.linux-amd64.tar.gz
+
+sudo mv node_exporter-1.8.2.linux-amd64 node_exporter
+
+Verify:
+
+ls /opt/node_exporter
+
+You should see:
+
+LICENSE
+NOTICE
+node_exporter
+
+Step 1: Create a dedicated user
+sudo useradd --no-create-home --shell /bin/false node_exporter
+
+Verify:
+
+id node_exporter
+Step 2: Give ownership
+sudo chown -R node_exporter:node_exporter /opt/node_exporter
+Step 3: Create a systemd service
+sudo nano /etc/systemd/system/node_exporter.service
+
+Paste:
+
+[Unit]
+Description=Prometheus Node Exporter
+After=network.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/opt/node_exporter/node_exporter
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+Save:
+
+Ctrl + O
+Enter
+Ctrl + X
+Step 4: Reload systemd
+sudo systemctl daemon-reload
+Step 5: Enable service
+sudo systemctl enable node_exporter
+Step 6: Start service
+sudo systemctl start node_exporter
+Step 7: Verify
+sudo systemctl status node_exporter
+
+You should see something like:
+
+Active: active (running)
+Step 8: Check listening port
+sudo ss -tulnp | grep 9100
+
+Expected:
+
+LISTEN 0 4096 *:9100
